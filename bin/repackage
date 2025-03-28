@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+
+trap 'exit' ERR
+set -E
+
+VERSION=
+ARCH=
+
+usage() {
+    cat <<EOF
+Usage: repackage PACKAGE_NAME
+EOF
+}
+
+arch() {
+    case "$(uname -p)" in
+        aarch64 | arm64)
+            echo "arm64"
+            ;;
+        x86_64 | amd64 | x86)
+            echo "amd64"
+            ;;
+        *)
+            printf "Unknown architecture: %s\n" "$(uname -p)"
+            exit 2
+    esac
+}
+
+download() {
+    local PKG=$1
+    apt-get download "$PKG"
+}
+
+parse_deb() {
+    local PKG=$1
+    VERSION="$(apt-cache show "$PKG" | grep Version: | awk '{print $2}')"
+    ARCH="$(arch)"
+}
+
+unpack() {
+    local PKG=$1
+    local DEB="${1}_${VERSION}_${ARCH}.deb"
+    dpkg-deb -R "$DEB" "$PKG"
+}
+
+copy_libs() {
+    local PKG=$1
+    local TEMBO=$2
+    local LIB="$TEMBO/var/lib/postgresql/data/lib"
+    mkdir -p "$LIB"
+    find "$PKG" -name '*.so.*' -exec cp --no-dereference {} "$LIB" \;
+}
+
+copy_control() {
+    local PKG=$1
+    local DEST=$2
+    local DIR="$DEST/DEBIAN"
+    local CTRL
+    CTRL="$(dirs +1)/control/$PKG"
+    mkdir -p "$DIR"
+    cp "$CTRL" "$DIR/control"
+    perl -i -pe "s/__ARCH__/$ARCH/g" "$DIR/control"
+    perl -i -pe "s/__VERSION__/$VERSION/g" "$DIR/control"
+}
+
+add_sums() {
+    local DEST=$1
+    # shellcheck disable=SC2046,SC2035
+    (cd "$DEST" && md5sum $(find * -type f -not -path 'DEBIAN/*') > DEBIAN/md5sums )
+}
+
+build() {
+    local DEST=$1
+    dpkg-deb --build "$DEST"
+    dpkg-deb --info "$DEST.deb"
+    dpkg-deb --contents "$DEST.deb"
+}
+
+install() {
+    local DEST=$1
+    dpkg -i "$DEST.deb"
+}
+
+move() {
+    local DEST=$1
+    mv "$DEST.deb" "$(dirs +1)"
+}
+
+main() {
+    local PKG TEMBO tmp
+    PKG=${1-}
+
+    if [ -z "$PKG" ]; then
+        usage
+        exit 2
+    fi
+
+    parse_deb "$PKG"
+    DEST="tembo-${PKG}_${VERSION}_${ARCH}"
+
+    tmp="$(mktemp -d)"
+    chmod +777 "$tmp"
+    pushd "$tmp" >/dev/null || exit
+    printf "Working in %s\n" "$tmp"
+
+    download "$PKG"
+    unpack "$PKG"
+    copy_libs "$PKG" "$DEST"
+    copy_control "$PKG" "$DEST"
+    add_sums "$DEST"
+
+    build "$DEST"
+    # install "$DEST"
+    move "$DEST"
+
+    popd >/dev/null || exit
+}
+
+main "$@"
