@@ -6,12 +6,36 @@ set -E
 VERSION=
 ARCH=
 
+# usage displays a usage statement.
 usage() {
     cat <<EOF
-Usage: repackage PACKAGE_NAME
+Usage: repackage PACKAGE_NAME [UBUNTU_PACKAGE_NAME]
 EOF
 }
 
+# get_control takes a package name as an argument and returns the full path to
+# its control file in ./control. Prints an error and a usage statement if no
+# package name is passed or the control file doesn't exist.
+get_control() {
+    local pkg=$1
+    if [ -z "$pkg" ]; then
+        usage
+        exit 2
+    fi
+
+    # Make sure we have the control file for this package.
+    local ctrl
+    ctrl="$(dirname "$(dirname "$(realpath -s "$0")")")/control/$pkg"
+    if [ ! -f "$ctrl" ]; then
+        printf "%s does not exist\n" "$ctrl"
+        usage
+        exit 2
+    fi
+    echo "$ctrl"
+}
+
+# arch returns the name of the current CPU architecture. Used to set the
+# architecture in the control file and to include it in the .deb file name.
 arch() {
     case "$(uname -p)" in
         aarch64 | arm64)
@@ -26,93 +50,115 @@ arch() {
     esac
 }
 
+# download downloads a package from the upstream Apt registries.
 download() {
-    local PKG=$1
-    apt-get download "$PKG"
+    local pkg=$1
+    apt-get download "$pkg"
 }
 
+# parse_deb fetches the package version and architecture and sets the global
+# VERSION and ARCH variables.
 parse_deb() {
-    local PKG=$1
-    VERSION="$(apt show "$PKG" | grep Version: | awk '{print $2}')"
+    local pkg=$1
+    VERSION="$(apt-cache show --no-all-versions "$pkg" | grep Version: | awk '{print $2}')"
     ARCH="$(arch)"
 }
 
+# unpack unpacks the package downloaded by download. It expects it name to
+# include the version and architecture set by parse_deb(). The resulting files
+# appear in a directory with the package name.
 unpack() {
-    local PKG=$1
-    local DEB="${1}_${VERSION}_${ARCH}.deb"
-    dpkg-deb -R "$DEB" "$PKG"
+    local pkg=$1
+    local deb="${pkg}_${VERSION}_${ARCH}.deb"
+    dpkg-deb -R "$deb" "$pkg"
 }
 
+# copy_libs copies all the .so files and symlinks from the package unpacked by
+# unpack() into /var/lib/postgresql/data/lib/ under a destination directory.
 copy_libs() {
-    local PKG=$1
-    local TEMBO=$2
-    local LIB="$TEMBO/var/lib/postgresql/data/lib"
-    mkdir -p "$LIB"
-    find "$PKG" -name '*.so.*' -exec cp --no-dereference {} "$LIB" \;
+    local pkg=$1
+    local dest=$2
+    local lib="$dest/var/lib/postgresql/data/lib"
+    mkdir -p "$lib"
+    find "$pkg" -name '*.so.*' -exec cp --no-dereference {} "$lib" \;
 }
 
+# copy_control copies the control file for the package to the destination
+# directory created by copy_libs() and updates the version and architecture
+# values in the file with values set by parse_deb().
 copy_control() {
-    local PKG=$1
-    local DEST=$2
-    local DIR="$DEST/DEBIAN"
-    local CTRL
-    CTRL="$(dirs +1)/control/$PKG"
-    mkdir -p "$DIR"
-    cp "$CTRL" "$DIR/control"
-    perl -i -pe "s/__ARCH__/$ARCH/g" "$DIR/control"
-    perl -i -pe "s/__VERSION__/$VERSION/g" "$DIR/control"
+    local ctrl=$1
+    local dest=$2
+    local dir="$dest/DEBIAN"
+    mkdir -p "$dir"
+    cp "$ctrl" "$dir/control"
+    perl -i -pe "s/__ARCH__/$ARCH/g" "$dir/control"
+    perl -i -pe "s/__VERSION__/$VERSION/g" "$dir/control"
 }
 
+# add_sums creates DEBIAN/md5sums in the destination directory.
 add_sums() {
-    local DEST=$1
+    local dest=$1
     # shellcheck disable=SC2046,SC2035
-    (cd "$DEST" && md5sum $(find * -type f -not -path 'DEBIAN/*') > DEBIAN/md5sums )
+    (cd "$dest" && md5sum $(find * -type f -not -path 'DEBIAN/*') > DEBIAN/md5sums )
 }
 
+# build creates the new .deb file from the destination directory created by
+# copy_libs() and further populated by copy_control() and add_sums().
 build() {
-    local DEST=$1
-    dpkg-deb --build "$DEST"
-    dpkg-deb --info "$DEST.deb"
-    dpkg-deb --contents "$DEST.deb"
+    local dest=$1
+    dpkg-deb --build "$dest"
+    dpkg-deb --info "$dest.deb"
+    dpkg-deb --contents "$dest.deb"
 }
 
+# install installs the named package. Not used, but here for reference.
 install() {
-    local DEST=$1
-    dpkg -i "$DEST.deb"
+    local dest=$1
+    dpkg -i "$dest.deb"
 }
 
+# move moves the new debian package created by build() back to the work
+# directory where repackage was originally called.
 move() {
-    local DEST=$1
-    mv "$DEST.deb" "$(dirs +1)"
+    local dest=$1
+    mv "$dest.deb" "$(dirs +1)"
 }
 
+# main executes repackage.
 main() {
-    local PKG TEMBO tmp
-    PKG=${1-}
+    local tembo_pkg upstream_pkg ctrl tmp dest
+    tembo_pkg=${1-}
 
-    if [ -z "$PKG" ]; then
-        usage
-        exit 2
-    fi
+    # Make sure we have the control file for this package.
+    ctrl="$(get_control "$tembo_pkg")"
 
-    parse_deb "$PKG"
-    DEST="tembo-${PKG}_${VERSION}_${ARCH}"
+    # Use the upstream package name, if passed.
+    upstream_pkg=${2-"$tembo_pkg"}
 
+    # Determine the destination package directory name.
+    parse_deb "$upstream_pkg"
+    dest="tembo-${tembo_pkg}_${VERSION}_${ARCH}"
+
+    # Switch to a temporary directory.
     tmp="$(mktemp -d)"
     chmod +777 "$tmp"
     pushd "$tmp" >/dev/null || exit
     printf "Working in %s\n" "$tmp"
 
-    download "$PKG"
-    unpack "$PKG"
-    copy_libs "$PKG" "$DEST"
-    copy_control "$PKG" "$DEST"
-    add_sums "$DEST"
+    # Download the upstream and build the new package structure.
+    download "$upstream_pkg"
+    unpack "$upstream_pkg"
+    copy_libs "$upstream_pkg" "$dest"
+    copy_control "$ctrl" "$dest"
+    add_sums "$dest"
 
-    build "$DEST"
-    # install "$DEST"
-    move "$DEST"
+    # Build the new package and move it back to the invocation directory.
+    build "$dest"
+    # install "$dest"
+    move "$dest"
 
+    # Return to the invocation directory.
     popd >/dev/null || exit
 }
 

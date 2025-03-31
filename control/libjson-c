@@ -1,7 +1,7 @@
-Package: tembo-libjson-c5
+Package: tembo-libjson-c
 Architecture: __ARCH__
 Version: __VERSION__
-Depends: libc6 (>= 2.38)
+Depends: libc6
 Maintainer: Tembo <admin+apt@tembo.io>
 Description: JSON manipulation library - shared library
  This library allows you to easily construct JSON objects in C,

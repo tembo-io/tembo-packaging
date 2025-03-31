@@ -24,5 +24,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: apt-get update
-      - run: ./bin/repackage libjson-c5
-      - run: ls -lah *.deb
+      - run: ./bin/repackage libjson-c libjson-c5
+      - run: dpkg -i *.deb
