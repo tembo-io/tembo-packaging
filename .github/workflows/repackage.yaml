@@ -1,0 +1,28 @@
+name: 📦 Repackage
+on:
+  push:
+  schedule:
+    # Rebuild all at 6am every Monday
+    - cron: 0 6 * * 1
+
+jobs:
+  repackage:
+    name: ${{ matrix.os[0] }} ${{ matrix.os[1] }} ${{ matrix.arch[0] }} ${{ matrix.arch[1] }}
+    runs-on:
+      # https://runs-on.com/runners/linux/
+      - "runs-on=${{ github.run_id }}-${{ matrix.os[1] }}-${{ matrix.arch[1] }}"
+      - "runner=small-${{ matrix.arch[1] }}"
+    strategy:
+      matrix:
+        os: [ ["🐿️", "noble", "24.04"], ["🪼", "jammy", "22.04"] ]
+        arch: [["🦾", "arm64"], ["🤖", "amd64"]]
+    container:
+      image: quay.io/tembo/ubuntu:${{ matrix.os[2] }}
+      credentials:
+          username: ${{ secrets.QUAY_USER_TEMBO }}
+          password: ${{ secrets.QUAY_PASSWORD_TEMBO }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: apt-get update
+      - run: ./bin/repackage libjson-c5
+      - run: ls -lah *.deb

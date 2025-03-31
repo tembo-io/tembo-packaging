@@ -33,7 +33,7 @@ download() {
 
 parse_deb() {
     local PKG=$1
-    VERSION="$(apt-cache show "$PKG" | grep Version: | awk '{print $2}')"
+    VERSION="$(apt show "$PKG" | grep Version: | awk '{print $2}')"
     ARCH="$(arch)"
 }
 
