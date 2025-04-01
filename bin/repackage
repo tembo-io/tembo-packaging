@@ -13,29 +13,8 @@ Usage: repackage PACKAGE_NAME [UBUNTU_PACKAGE_NAME]
 EOF
 }
 
-# get_control takes a package name as an argument and returns the full path to
-# its control file in ./control. Prints an error and a usage statement if no
-# package name is passed or the control file doesn't exist.
-get_control() {
-    local pkg=$1
-    if [ -z "$pkg" ]; then
-        usage
-        exit 2
-    fi
-
-    # Make sure we have the control file for this package.
-    local ctrl
-    ctrl="$(dirname "$(dirname "$(realpath -s "$0")")")/control/$pkg"
-    if [ ! -f "$ctrl" ]; then
-        printf "%s does not exist\n" "$ctrl"
-        usage
-        exit 2
-    fi
-    echo "$ctrl"
-}
-
-# arch returns the name of the current CPU architecture. Used to set the
-# architecture in the control file and to include it in the .deb file name.
+# arch returns the name of the current CPU architecture. Used in package file
+# names.
 arch() {
     case "$(uname -p)" in
         aarch64 | arm64)
@@ -73,72 +52,62 @@ unpack() {
     dpkg-deb -R "$deb" "$pkg"
 }
 
-# copy_libs copies all the .so files and symlinks from the package unpacked by
-# unpack() into /var/lib/postgresql/data/lib/ under a destination directory.
-copy_libs() {
+# copy_files copies all the .so files and symlinks and the copyright file from
+# the package unpacked by unpack() into lib/ under a destination directory.
+copy_files() {
     local pkg=$1
     local dest=$2
-    local lib="$dest/var/lib/postgresql/data/lib"
+
+    # Copy .so files and symlinks.
+    local lib="$dest/lib"
     mkdir -p "$lib"
-    find "$pkg" -name '*.so.*' -exec cp --no-dereference {} "$lib" \;
+    find "$pkg" -name '*.so.*' -exec cp --verbose --no-dereference {} "$lib/" \;
+
+    # Copy the `copyright` file.
+    local doc="$dest/doc"
+    mkdir -p "$doc"
+    find "$pkg" -name 'copyright' -exec cp --verbose {} "$doc/" \;
 }
 
-# copy_control copies the control file for the package to the destination
-# directory created by copy_libs() and updates the version and architecture
-# values in the file with values set by parse_deb().
-copy_control() {
-    local ctrl=$1
-    local dest=$2
-    local dir="$dest/DEBIAN"
-    mkdir -p "$dir"
-    cp "$ctrl" "$dir/control"
-    perl -i -pe "s/__ARCH__/$ARCH/g" "$dir/control"
-    perl -i -pe "s/__VERSION__/$VERSION/g" "$dir/control"
-}
-
-# add_sums creates DEBIAN/md5sums in the destination directory.
-add_sums() {
+# add_digests creates the digests file in the destination directory.
+add_digests() {
     local dest=$1
-    # shellcheck disable=SC2046,SC2035
-    (cd "$dest" && md5sum $(find * -type f -not -path 'DEBIAN/*') > DEBIAN/md5sums )
+    tmp_digests="$(mktemp)"
+    ( cd "$dest" && find . -type f  -exec sha512sum -b --tag {} + > "$tmp_digests" )
+    mv "$tmp_digests" "$dest/digests"
 }
 
-# build creates the new .deb file from the destination directory created by
-# copy_libs() and further populated by copy_control() and add_sums().
+# build creates the new .tgz file from the destination directory created by
+# copy_files() and further populated add_digests().
 build() {
     local dest=$1
-    dpkg-deb --build "$dest"
-    dpkg-deb --info "$dest.deb"
-    dpkg-deb --contents "$dest.deb"
-}
-
-# install installs the named package. Not used, but here for reference.
-install() {
-    local dest=$1
-    dpkg -i "$dest.deb"
+    tar -czvf "$dest.tgz" "$dest"
 }
 
 # move moves the new debian package created by build() back to the work
 # directory where repackage was originally called.
 move() {
     local dest=$1
-    mv "$dest.deb" "$(dirs +1)"
+    mv "$dest.tgz" "$(dirs +1)"
 }
 
 # main executes repackage.
 main() {
-    local tembo_pkg upstream_pkg ctrl tmp dest
+    local tembo_pkg upstream_pkg tmp dest
     tembo_pkg=${1-}
 
-    # Make sure we have the control file for this package.
-    ctrl="$(get_control "$tembo_pkg")"
+    # Maker sure we have the tembo package argument.
+    if [ -z "$tembo_pkg" ]; then
+        usage
+        exit 2
+    fi
 
     # Use the upstream package name, if passed.
     upstream_pkg=${2-"$tembo_pkg"}
 
     # Determine the destination package directory name.
     parse_deb "$upstream_pkg"
-    dest="tembo-${tembo_pkg}_${VERSION}_${ARCH}"
+    dest="tembo-${tembo_pkg}_${ARCH}"
 
     # Switch to a temporary directory.
     tmp="$(mktemp -d)"
@@ -149,13 +118,11 @@ main() {
     # Download the upstream and build the new package structure.
     download "$upstream_pkg"
     unpack "$upstream_pkg"
-    copy_libs "$upstream_pkg" "$dest"
-    copy_control "$ctrl" "$dest"
-    add_sums "$dest"
+    copy_files "$upstream_pkg" "$dest"
+    add_digests "$dest"
 
     # Build the new package and move it back to the invocation directory.
     build "$dest"
-    # install "$dest"
     move "$dest"
 
     # Return to the invocation directory.

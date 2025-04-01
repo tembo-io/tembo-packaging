@@ -25,4 +25,6 @@ jobs:
       - uses: actions/checkout@v4
       - run: apt-get update
       - run: ./bin/repackage libjson-c libjson-c5
-      - run: dpkg -i *.deb
+      - run: ./bin/install_package libjson-c
+      - run: ./bin/repackage libhiredis libhiredis${{ matrix.os[1] == 'noble' && '1.1.0' || '0.14' }}
+      - run: ./bin/install_package libhiredis

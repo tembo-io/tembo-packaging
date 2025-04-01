@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+trap 'exit' ERR
+set -E
+
+# arch returns the name of the current CPU architecture. Used in package file
+# names.
+arch() {
+    case "$(uname -p)" in
+        aarch64 | arm64)
+            echo "arm64"
+            ;;
+        x86_64 | amd64 | x86)
+            echo "amd64"
+            ;;
+        *)
+            printf "Unknown architecture: %s\n" "$(uname -p)"
+            exit 2
+    esac
+}
+
+# Unpack, validate the digests, and install the named package.
+main() {
+    local tembo_pkg arch dest
+    tembo_pkg=${1-}
+
+    # Maker sure we have the tembo package argument.
+    if [ -z "$tembo_pkg" ]; then
+        usage
+        exit 2
+    fi
+
+    dest=/var/lib/postgresql/data/lib
+    arch="$(arch)"
+    tar zxvf "tembo-${tembo_pkg}_${arch}.tgz"
+    cd "tembo-${tembo_pkg}_${arch}" || exit
+    sha512sum --check --strict digests
+    mkdir -p "$dest"
+    cp -p --recursive --update --verbose "lib/"* "$dest/"
+}
+
+main "$@"
