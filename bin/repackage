@@ -3,30 +3,41 @@
 trap 'exit' ERR
 set -E
 
-VERSION=
-ARCH=
+# Load OS variables. Defines DISTRIB_CODENAME.
+# shellcheck source=/dev/null
+source /etc/lsb-release
 
 # usage displays a usage statement.
 usage() {
     cat <<EOF
-Usage: repackage PACKAGE_NAME [UBUNTU_PACKAGE_NAME]
+Usage: repackage PACKAGE_NAME
 EOF
 }
 
-# arch returns the name of the current CPU architecture. Used in package file
-# names.
-arch() {
-    case "$(uname -p)" in
-        aarch64 | arm64)
-            echo "arm64"
-            ;;
-        x86_64 | amd64 | x86)
-            echo "amd64"
-            ;;
-        *)
-            printf "Unknown architecture: %s\n" "$(uname -p)"
-            exit 2
-    esac
+# get_upstream gets the upstream package name of `$tembo_pkg` by reading it
+# from `packages/$tembo_pkg.cfg`. Returns an error if `$tembo_pkg` is not set
+# or `packages/$tembo_pkg.cfg` does not exist.
+get_upstream() {
+    if [ -z "$tembo_pkg" ]; then
+        usage
+        exit 2
+    fi
+
+    # Make sure we have the control file for this package.
+    local cfg
+    cfg="$(dirname "$(dirname "$(realpath -s "$0")")")/packages/$tembo_pkg.cfg"
+    if [ ! -f "$cfg" ]; then
+        printf "%s does not exist\n" "$tembo_pkg"
+        usage
+        exit 2
+    fi
+
+    # shellcheck source=/dev/null
+    source "$cfg"
+
+    # Set the name of the upstream package for this OS release.
+    local var="${DISTRIB_CODENAME}_package"
+    upstream_pkg=${!var}
 }
 
 # download downloads a package from the upstream Apt registries.
@@ -35,12 +46,12 @@ download() {
     apt-get download "$pkg"
 }
 
-# parse_deb fetches the package version and architecture and sets the global
-# VERSION and ARCH variables.
+# parse_deb fetches the package version and architecture and sets the
+# `version` and `arch` variables.
 parse_deb() {
     local pkg=$1
-    VERSION="$(apt-cache show --no-all-versions "$pkg" | grep Version: | awk '{print $2}')"
-    ARCH="$(arch)"
+    version="$(apt-cache show --no-all-versions "$pkg" | grep Version: | awk '{print $2}')"
+    arch="$(dpkg --print-architecture)"
 }
 
 # unpack unpacks the package downloaded by download. It expects it name to
@@ -48,7 +59,7 @@ parse_deb() {
 # appear in a directory with the package name.
 unpack() {
     local pkg=$1
-    local deb="${pkg}_${VERSION}_${ARCH}.deb"
+    local deb="${pkg}_${version}_${arch}.deb"
     dpkg-deb -R "$deb" "$pkg"
 }
 
@@ -93,21 +104,13 @@ move() {
 
 # main executes repackage.
 main() {
-    local tembo_pkg upstream_pkg tmp dest
+    local tembo_pkg upstream_pkg tmp dest arch version
     tembo_pkg=${1-}
-
-    # Maker sure we have the tembo package argument.
-    if [ -z "$tembo_pkg" ]; then
-        usage
-        exit 2
-    fi
-
-    # Use the upstream package name, if passed.
-    upstream_pkg=${2-"$tembo_pkg"}
+    get_upstream
 
     # Determine the destination package directory name.
     parse_deb "$upstream_pkg"
-    dest="tembo-${tembo_pkg}_${ARCH}"
+    dest="tembo-${tembo_pkg}_${arch}"
 
     # Switch to a temporary directory.
     tmp="$(mktemp -d)"

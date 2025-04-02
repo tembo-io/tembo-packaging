@@ -1,17 +1,36 @@
-# Tembo Cloud Apt Packaging
+# Tembo Cloud Packaging
 
-This project builds Apt packages for [Tembo Cloud].
+This project builds dependency packages for [Tembo Cloud].
 
-  [Tembo Cloud]: https://cloud.tembo.io
+## Usage
 
-## Repackage Usage
+1.  Make sure the package database is up-to-date:
+
+    ``` sh
+    apt-get update
+    ```
+
+2.  Use `make -j` to build all the packages in parallel across all CPUs.
+
+    ``` sh
+    make -j$(nproc)
+    ```
+
+3.  Use `make install` to install the packages:
+
+    ``` sh
+    make -j$(nproc) install
+    ```
+
+## `repackage` Usage
 
 The [`repackage`](bin/repackage) script downloads an Apt package and creates a
-tarball with the that contains the shared object libraries to be installed on
-the Tembo Cloud persistent volume. Example:
+tarball that contains the shared object libraries to be installed on the Tembo
+Cloud persistent volume. The package must have a config file,
+`packages/$package.cfg`. Example:
 
 ```console
-# ./bin/repackage libjson-c libjson-c5
+# ./bin/repackage libjson-c
 Working in /tmp/tmp.HLNvAFmsMY
 Get:1 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libjson-c5 arm64 0.17-1build1 [36.4 kB]
 Fetched 36.4 kB in 1s (57.6 kB/s)     
@@ -25,7 +44,14 @@ tembo-libjson-c_arm64/lib/libjson-c.so.5.3.0
 tembo-libjson-c_arm64/lib/libjson-c.so.5
 tembo-libjson-c_arm64/doc/
 tembo-libjson-c_arm64/doc/copyright
+```
 
+## `install_package` Usage
+
+Once the tarball has been built for a package, use
+[`install_package`](bin/install_package) to install it:
+
+``` console
 # ./bin/install_package libjson-c
 tembo-libjson-c_arm64/
 tembo-libjson-c_arm64/digests
@@ -40,3 +66,5 @@ removed '/var/lib/postgresql/data/lib/libjson-c.so.5'
 'lib/libjson-c.so.5' -> '/var/lib/postgresql/data/lib/libjson-c.so.5'
 'lib/libjson-c.so.5.3.0' -> '/var/lib/postgresql/data/lib/libjson-c.so.5.3.0'
 ```
+
+  [Tembo Cloud]: https://cloud.tembo.io
