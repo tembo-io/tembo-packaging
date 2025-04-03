@@ -10,24 +10,24 @@ source /etc/lsb-release
 # usage displays a usage statement.
 usage() {
     cat <<EOF
-Usage: repackage PACKAGE_NAME
+Usage: repackage PACKAGE_NAME DEST_DIRECTORY
 EOF
 }
 
 # get_upstream gets the upstream package name of `$tembo_pkg` by reading it
-# from `packages/$tembo_pkg.cfg`. Returns an error if `$tembo_pkg` is not set
-# or `packages/$tembo_pkg.cfg` does not exist.
+# from `packages/$pkg.cfg`. Returns an error if `$pkg` is not set or
+# `packages/$pkg.cfg` does not exist.
 get_upstream() {
-    if [ -z "$tembo_pkg" ]; then
+    if [ -z "$pkg" ]; then
         usage
         exit 2
     fi
 
     # Make sure we have the control file for this package.
     local cfg
-    cfg="$(dirname "$(dirname "$(realpath -s "$0")")")/packages/$tembo_pkg.cfg"
+    cfg="$(dirname "$(dirname "$(realpath -s "$0")")")/packages/$pkg.cfg"
     if [ ! -f "$cfg" ]; then
-        printf "%s does not exist\n" "$tembo_pkg"
+        printf "%s does not exist\n" "$pkg"
         usage
         exit 2
     fi
@@ -98,19 +98,22 @@ build() {
 # move moves the new debian package created by build() back to the work
 # directory where repackage was originally called.
 move() {
-    local dest=$1
-    mv "$dest.tgz" "$(dirs +1)"
+    local src=$1
+    local dest=$2
+    mkdir -p "$dest"
+    mv --verbose "$src" "$dest"
 }
 
 # main executes repackage.
 main() {
-    local tembo_pkg upstream_pkg tmp dest arch version
-    tembo_pkg=${1-}
+    local pkg tembo_pkg upstream_pkg dest tmp arch version
+    pkg=${1-}
+    dest="$(realpath -s "${2-.}")/"
     get_upstream
 
     # Determine the destination package directory name.
     parse_deb "$upstream_pkg"
-    dest="tembo-${tembo_pkg}_${arch}"
+    tembo_pkg="tembo-${pkg}_${arch}"
 
     # Switch to a temporary directory.
     tmp="$(mktemp -d)"
@@ -121,12 +124,12 @@ main() {
     # Download the upstream and build the new package structure.
     download "$upstream_pkg"
     unpack "$upstream_pkg"
-    copy_files "$upstream_pkg" "$dest"
-    add_digests "$dest"
+    copy_files "$upstream_pkg" "$tembo_pkg"
+    add_digests "$tembo_pkg"
 
     # Build the new package and move it back to the invocation directory.
-    build "$dest"
-    move "$dest"
+    build "$tembo_pkg"
+    move "$tembo_pkg.tgz" "$dest"
 
     # Return to the invocation directory.
     popd >/dev/null || exit

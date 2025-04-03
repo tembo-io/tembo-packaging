@@ -3,10 +3,18 @@
 trap 'exit' ERR
 set -E
 
+# usage displays a usage statement.
+usage() {
+    cat <<EOF
+Usage: install_package PACKAGE_NAME SRC_DIRECTORY
+EOF
+}
+
 # Unpack, validate the digests, and install the named package.
 main() {
-    local tembo_pkg arch dest
+    local tembo_pkg arch src dest
     tembo_pkg=${1-}
+    src=${2-.}
 
     # Maker sure we have the tembo package argument.
     if [ -z "$tembo_pkg" ]; then
@@ -16,8 +24,9 @@ main() {
 
     dest=/var/lib/postgresql/data/lib
     arch="$(dpkg --print-architecture)"
-    tar zxvf "tembo-${tembo_pkg}_${arch}.tgz"
-    cd "tembo-${tembo_pkg}_${arch}" || exit
+    cd "$src" || exit
+    tar zxvf "tembo-${tembo_pkg}_${arch}.tgz" -C /tmp
+    cd "/tmp/tembo-${tembo_pkg}_${arch}" || exit
     sha512sum --check --strict digests
     mkdir -p "$dest"
     cp -p --recursive --update --verbose "lib/"* "$dest/"

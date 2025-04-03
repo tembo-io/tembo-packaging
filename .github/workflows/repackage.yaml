@@ -4,6 +4,9 @@ on:
   schedule:
     # Rebuild all at 6am every Monday
     - cron: 0 6 * * 1
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   repackage:
@@ -23,7 +26,43 @@ jobs:
           password: ${{ secrets.QUAY_PASSWORD_TEMBO }}
     steps:
       - uses: actions/checkout@v4
-      - run: apt-get update
-      - run: apt-get install make
-      - run: make "-j$(nproc)" tarballs
-      - run: make "-j$(nproc)" install
+      - name: Install Dependencies
+        run: apt-get update && apt-get install -y make
+      - name: Build Packages
+        run: make "-j$(nproc)"
+      - name: Install Packages
+        run: make "-j$(nproc)" install
+      - name: Upload Packages
+        uses: actions/upload-artifact@v4
+        with:
+          path: build/
+          name: build-${{ matrix.arch[1] }}-${{ matrix.os[1] }}
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: 🍱 Publish Packages
+    runs-on:
+      - runs-on=${{ github.run_id }}
+      - runner=small
+    needs: repackage
+    steps:
+      - name: Download Packages
+        uses: actions/download-artifact@v4
+        with: { path: build, merge-multiple: true }
+      - name: Configure Global AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: "us-east-1"
+          role-to-assume: "arn:aws:iam::818319415844:role/cdb-core-gbl-identity-admin"
+          role-session-name: "pgtrunk-package"
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: "us-east-1"
+          role-to-assume: "arn:aws:iam::844506114394:role/cdb-plat-gbl-prod-admin"
+          role-session-name: "pgtrunk-package"
+          role-chaining: true
+      - name: Sync Packages to S3
+        run: aws s3 sync build/ s3://cdb-plat-use1-prod-pgtrunkio/dependencies/ --no-progress --acl public-read --follow-symlinks --sse AES256
