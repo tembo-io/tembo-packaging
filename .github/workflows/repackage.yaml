@@ -1,6 +1,7 @@
 name: 📦 Repackage
 on:
   push:
+  pull_request:
   schedule:
     # Rebuild all at 6am every Monday
     - cron: 0 6 * * 1
@@ -11,6 +12,7 @@ permissions:
 jobs:
   repackage:
     name: ${{ matrix.os[0] }} ${{ matrix.os[1] }} ${{ matrix.arch[0] }} ${{ matrix.arch[1] }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
     runs-on:
       # https://runs-on.com/runners/linux/
       - "runs-on=${{ github.run_id }}-${{ matrix.os[1] }}-${{ matrix.arch[1] }}"
@@ -29,7 +31,7 @@ jobs:
       - name: Install Dependencies
         run: apt-get update && apt-get install -y make
       - name: Build Packages
-        run: make "-j$(nproc)"
+        run: make "-j$(nproc)" packages
       - name: Install Packages
         run: make "-j$(nproc)" install
       - name: Upload Packages
@@ -43,6 +45,7 @@ jobs:
 
   publish:
     name: 🍱 Publish Packages
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
     runs-on:
       - runs-on=${{ github.run_id }}
       - runner=small

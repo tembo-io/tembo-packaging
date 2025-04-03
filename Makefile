@@ -6,8 +6,10 @@
 arch := $(shell dpkg --print-architecture)
 dest := build
 
+all: tembox packages
+
 # Build tarballs for all packages from `packages/*.cfg`.
-tarballs: $(patsubst packages/%.cfg,$(dest)/tembo-%_$(arch).tgz,$(wildcard packages/*.cfg))
+packages: $(patsubst packages/%.cfg,$(dest)/tembo-%_$(arch).tgz,$(wildcard packages/*.cfg))
 $(dest)/tembo-%_$(arch).tgz:
 	@./bin/repackage $* $(dest)
 
@@ -16,5 +18,10 @@ install: $(patsubst packages/%.cfg,install-%,$(wildcard packages/*.cfg))
 install-%: $(dest)/tembo-%_$(arch).tgz
 	./bin/install_package $* $(dest)
 
+tembox: target/release/tembox
+
+target/release/tembox:
+	cargo build --release
+
 clean:
-	@rm -rf $(dest)
+	@rm -rf $(dest) target

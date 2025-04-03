@@ -1,8 +1,12 @@
 # Tembo Cloud Packaging
 
-This project builds dependency packages for [Tembo Cloud].
+This project builds dependency packages for [Tembo Cloud] and maintains a
+client for installing those packages.
 
-## Usage
+## Packaging
+
+To build the packages, on Ubuntu 22.04 "Jammy" or 24.94 "Noble" on amd64 or
+arm64:
 
 1.  Make sure the package database is up-to-date:
 
@@ -13,7 +17,7 @@ This project builds dependency packages for [Tembo Cloud].
 2.  Use `make -j` to build all the packages in parallel across all CPUs.
 
     ``` sh
-    make -j$(nproc)
+    make -j$(nproc) packages
     ```
 
 3.  Use `make install` to install the packages:
@@ -22,7 +26,7 @@ This project builds dependency packages for [Tembo Cloud].
     make -j$(nproc) install
     ```
 
-## `repackage` Usage
+### `repackage` Usage
 
 The [`repackage`](bin/repackage) script downloads an Apt package and creates a
 tarball that contains the shared object libraries to be installed on the Tembo
@@ -46,7 +50,7 @@ tembo-libjson-c_arm64/doc/
 tembo-libjson-c_arm64/doc/copyright
 ```
 
-## `install_package` Usage
+### `install_package` Usage
 
 Once the tarball has been built for a package, use
 [`install_package`](bin/install_package) to install it:
@@ -65,6 +69,37 @@ tembo-libjson-c_arm64/doc/copyright
 removed '/var/lib/postgresql/data/lib/libjson-c.so.5'
 'lib/libjson-c.so.5' -> '/var/lib/postgresql/data/lib/libjson-c.so.5'
 'lib/libjson-c.so.5.3.0' -> '/var/lib/postgresql/data/lib/libjson-c.so.5.3.0'
+```
+
+## Tembox
+
+The `tembox` application installs packages built by `repackage` and uploaded
+to our repository. It requires Rust on amd64 or arm64 Linux to build:
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+make tembox
+```
+
+Then use it on Ubuntu 22.04 "Jammy" or 24.94 "Noble" on amd64 or arm64 to
+install one or more packages, using the names of the `*.cfg` files in
+[`packages`](./packages/):
+
+```console
+./target/release/tembox libjson-c libhiredis
+📦 Installing libjson-c
+   Downloading libjson-c
+   Validating digests...OK
+   Copying shared libraries...
+     lib/libjson-c.so.5.1.0 -> /var/lib/postgresql/data/lib/libjson-c.so.5.1.0
+     lib/libjson-c.so.5 -> /var/lib/postgresql/data/lib/libjson-c.so.5
+✅ libjson-c installed
+📦 Installing libhiredis
+   Downloading libhiredis
+   Validating digests...OK
+   Copying shared libraries...
+     lib/libhiredis.so.0.14 -> /var/lib/postgresql/data/lib/libhiredis.so.0.14
+✅ libhiredis installed
 ```
 
   [Tembo Cloud]: https://cloud.tembo.io

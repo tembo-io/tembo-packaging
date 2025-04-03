@@ -1,0 +1,11 @@
+[package]
+name = "tembox"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+flate2 = "1.1.1"
+log = "0.4.27"
+tar = "0.4.44"
+tempfile = "3.19.1"
+ureq = "3.0.10"
