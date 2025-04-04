@@ -108,7 +108,7 @@ move() {
 main() {
     local pkg tembo_pkg upstream_pkg dest tmp arch version
     pkg=${1-}
-    dest="$(realpath -s "${2-.}")/"
+    dest="$(realpath -s "${2-.}")/$DISTRIB_CODENAME/"
     get_upstream
 
     # Determine the destination package directory name.

@@ -34,7 +34,7 @@ Cloud persistent volume. The package must have a config file,
 `packages/$package.cfg`. Example:
 
 ```console
-# ./bin/repackage libjson-c
+❯ ./bin/repackage libjson-c
 Working in /tmp/tmp.HLNvAFmsMY
 Get:1 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libjson-c5 arm64 0.17-1build1 [36.4 kB]
 Fetched 36.4 kB in 1s (57.6 kB/s)     
@@ -48,6 +48,8 @@ tembo-libjson-c_arm64/lib/libjson-c.so.5.3.0
 tembo-libjson-c_arm64/lib/libjson-c.so.5
 tembo-libjson-c_arm64/doc/
 tembo-libjson-c_arm64/doc/copyright
+copied 'tembo-libjson-c_arm64.tgz' -> '/work/noble/tembo-libjson-c_arm64.tgz'
+removed 'tembo-libjson-c_arm64.tgz'
 ```
 
 ### `install_package` Usage
@@ -56,7 +58,7 @@ Once the tarball has been built for a package, use
 [`install_package`](bin/install_package) to install it:
 
 ``` console
-# ./bin/install_package libjson-c
+❯ ./bin/install_package libjson-c
 tembo-libjson-c_arm64/
 tembo-libjson-c_arm64/digests
 tembo-libjson-c_arm64/lib/
@@ -82,24 +84,26 @@ make tembox
 ```
 
 Then use it on Ubuntu 22.04 "Jammy" or 24.94 "Noble" on amd64 or arm64 to
-install one or more packages, using the names of the `*.cfg` files in
+> install one or more packages, using the names of the `*.cfg` files in
 [`packages`](./packages/):
 
 ```console
-./target/release/tembox libjson-c libhiredis
+❯ ./target/release/tembox libjson-c libhiredis
 📦 Installing libjson-c
    Downloading libjson-c
    Validating digests...OK
    Copying shared libraries...
-     lib/libjson-c.so.5.1.0 -> /var/lib/postgresql/data/lib/libjson-c.so.5.1.0
+     lib/libjson-c.so.5.3.0 -> /var/lib/postgresql/data/lib/libjson-c.so.5.3.0
      lib/libjson-c.so.5 -> /var/lib/postgresql/data/lib/libjson-c.so.5
 ✅ libjson-c installed
 📦 Installing libhiredis
    Downloading libhiredis
    Validating digests...OK
    Copying shared libraries...
-     lib/libhiredis.so.0.14 -> /var/lib/postgresql/data/lib/libhiredis.so.0.14
-✅ libhiredis installed
+     lib/libhiredis.so.1 -> /var/lib/postgresql/data/lib/libhiredis.so.1
+     lib/libhiredis_ssl.so.1 -> /var/lib/postgresql/data/lib/libhiredis_ssl.so.1
+     lib/libhiredis_ssl.so.1.1.0 -> /var/lib/postgresql/data/lib/libhiredis_ssl.so.1.1.0
+     lib/libhiredis.so.1.1.0 -> /var/lib/postgresql/data/lib/libhiredis.so.1.1.0
 ```
 
   [Tembo Cloud]: https://cloud.tembo.io

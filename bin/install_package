@@ -3,6 +3,10 @@
 trap 'exit' ERR
 set -E
 
+# Load OS variables. Defines DISTRIB_CODENAME.
+# shellcheck source=/dev/null
+source /etc/lsb-release
+
 # usage displays a usage statement.
 usage() {
     cat <<EOF
@@ -24,7 +28,7 @@ main() {
 
     dest=/var/lib/postgresql/data/lib
     arch="$(dpkg --print-architecture)"
-    cd "$src" || exit
+    cd "$src/$DISTRIB_CODENAME" || exit
     tar zxvf "tembo-${tembo_pkg}_${arch}.tgz" -C /tmp
     cd "/tmp/tembo-${tembo_pkg}_${arch}" || exit
     sha512sum --check --strict digests

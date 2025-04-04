@@ -1,7 +1,9 @@
 use flate2::read::GzDecoder;
-use log::debug;
+use log::{debug, trace};
 use std::{
-    env, fs, io,
+    env,
+    fs::{self, File},
+    io,
     path::Path,
     process::{Command, ExitCode},
     time::Duration,
@@ -17,17 +19,20 @@ const ARCH: &str = "amd64";
 const ARCH: &str = "arm64";
 const URL: &str = "https://cdb-plat-use1-prod-pgtrunkio.s3.us-east-1.amazonaws.com/dependencies";
 static DEST: &str = "/var/lib/postgresql/data/lib";
+const LSB_FILE: &str = "/etc/lsb-release";
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
-fn main() -> Result<ExitCode, std::io::Error> {
-    debug!("Creating {DEST}");
-    fs::create_dir_all(DEST)?;
+fn main() -> Result<ExitCode, io::Error> {
+    let os = get_codename()?;
+    let dest = format!("{DEST}/{os}");
+    debug!("Creating {dest}");
+    fs::create_dir_all(&dest)?;
 
     let mut code = ExitCode::SUCCESS;
     for pkg in env::args().skip(1) {
         println!("📦 Installing {pkg}");
         // XXX Make build async and wait for them all to finish.
-        match build(&pkg, DEST) {
+        match build(&pkg, &dest, &os) {
             Ok(_) => println!("✅ {pkg} installed"),
             Err(e) => {
                 eprintln!("🚨 {pkg} Error: {e}");
@@ -39,10 +44,10 @@ fn main() -> Result<ExitCode, std::io::Error> {
     Ok(code)
 }
 
-fn build(name: &str, dest: impl AsRef<Path>) -> Result<(), std::io::Error> {
+fn build(name: &str, dest: impl AsRef<Path>, os: &str) -> Result<(), io::Error> {
     println!("   Downloading {name}");
     let pkg = format!("tembo-{name}_{ARCH}");
-    let url = format!("{URL}/{pkg}.tgz");
+    let url = format!("{URL}/{os}/{pkg}.tgz");
     debug!("Downloading {url}");
 
     let agent: Agent = Agent::config_builder()
@@ -95,6 +100,7 @@ fn build(name: &str, dest: impl AsRef<Path>) -> Result<(), std::io::Error> {
         let entry = entry?;
         let path = entry.path();
         if path.ends_with(".so") {
+            debug!("skipping {:?}", path);
             continue;
         }
         let dest = dest.as_ref().join(entry.file_name());
@@ -107,7 +113,7 @@ fn build(name: &str, dest: impl AsRef<Path>) -> Result<(), std::io::Error> {
         if meta.is_symlink() {
             // Just recreate the symlink.
             if let Err(e) = std::fs::remove_file(&dest) {
-                if e.kind() != std::io::ErrorKind::NotFound {
+                if e.kind() != io::ErrorKind::NotFound {
                     return Err(e);
                 }
             }
@@ -117,4 +123,26 @@ fn build(name: &str, dest: impl AsRef<Path>) -> Result<(), std::io::Error> {
         }
     }
     Ok(())
+}
+
+fn get_codename() -> Result<String, io::Error> {
+    use std::io::BufRead;
+    debug!("Parsing {LSB_FILE}");
+    let file = File::open(LSB_FILE)?;
+    let reader = io::BufReader::new(file);
+    for line in reader.lines().map_while(Result::ok) {
+        trace!("line {line}");
+        let mut split = line.splitn(2, "=");
+        if let Some(key) = split.next() {
+            if key == "DISTRIB_CODENAME" {
+                if let Some(val) = split.last() {
+                    return Ok(val.to_string());
+                }
+            }
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::Other,
+        format!("DISTRIB_CODENAME not found in {}", LSB_FILE),
+    ))
 }
