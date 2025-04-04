@@ -14,7 +14,47 @@ Usage: install_package PACKAGE_NAME SRC_DIRECTORY
 EOF
 }
 
-# Unpack, validate the digests, and install the named package.
+# check_tembox checks the contents of tembox.cfg to make sure we're installing
+# the right package on the right OS and architecture.
+check_tembox() {
+    printf "Validating tembox.cfg..."
+    local tembox_package tembox_arch tembox_os
+    # shellcheck source=/dev/null
+    source tembox.cfg
+    if [ "$tembox_package" != "$tembo_pkg" ]; then
+        printf "NOT OK\n"
+        printf "Wrong package: expected '%s' but got '%s'\n" "$tembo_pkg" "$tembox_package" >&2
+        exit 2
+    fi
+    if [ "$tembox_os" != "$DISTRIB_CODENAME" ]; then
+        printf "NOT OK\n"
+        printf "Wrong OS: expected '%s' but got '%s'\n" "$tembox_os" "$DISTRIB_CODENAME" >&2
+        exit 2
+    fi
+    if [ "$tembox_arch" != "$arch" ]; then
+        printf "NOT OK\n"
+        printf "Wrong architecture: expected '%s' but got '%s'\n" "$tembox_arch" "$arch" >&2
+        exit 2
+    fi
+    printf "OK\n"
+}
+
+# copy_libs copies the contents of the package lib directory to
+# /var/lib/postgresql/data/lib.
+copy_libs() {
+    dest=/var/lib/postgresql/data/lib
+    mkdir -p "$dest"
+    cp -p --recursive --verbose "lib/"* "$dest/"
+}
+
+# copy_cfg copies tembo.cfg to /var/lib/postgresql/data/tembox/$package.cfg.
+copy_cfg() {
+    dest=/var/lib/postgresql/data/tembox
+    mkdir -p "$dest"
+    cp -p --verbose tembox.cfg "$dest/$tembo_pkg.cfg"
+}
+
+# Unpack, validate the digests and config, and install the named package.
 main() {
     local tembo_pkg arch src dest
     tembo_pkg=${1-}
@@ -26,14 +66,15 @@ main() {
         exit 2
     fi
 
-    dest=/var/lib/postgresql/data/lib
     arch="$(dpkg --print-architecture)"
     cd "$src/$DISTRIB_CODENAME" || exit
     tar zxvf "tembo-${tembo_pkg}_${arch}.tgz" -C /tmp
     cd "/tmp/tembo-${tembo_pkg}_${arch}" || exit
+
     sha512sum --check --strict digests
-    mkdir -p "$dest"
-    cp -p --recursive --update --verbose "lib/"* "$dest/"
+    check_tembox
+    copy_libs
+    copy_cfg
 }
 
 main "$@"

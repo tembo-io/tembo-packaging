@@ -88,6 +88,16 @@ add_digests() {
     mv "$tmp_digests" "$dest/digests"
 }
 
+add_metadata() {
+    local dest=$1
+    (
+        printf "tembox_package=%s\n" "$pkg"
+        printf "tembox_package_version=%s\n" "$version"
+        printf "tembox_os=%s\n" "$DISTRIB_CODENAME"
+        printf "tembox_arch=%s\n" "$arch"
+    ) > "$dest/tembox.cfg"
+}
+
 # build creates the new .tgz file from the destination directory created by
 # copy_files() and further populated add_digests().
 build() {
@@ -125,6 +135,7 @@ main() {
     download "$upstream_pkg"
     unpack "$upstream_pkg"
     copy_files "$upstream_pkg" "$tembo_pkg"
+    add_metadata "$tembo_pkg"
     add_digests "$tembo_pkg"
 
     # Build the new package and move it back to the invocation directory.

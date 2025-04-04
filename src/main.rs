@@ -1,9 +1,10 @@
 use flate2::read::GzDecoder;
 use log::{debug, trace};
 use std::{
+    collections::HashMap,
     env,
     fs::{self, File},
-    io,
+    io::{self, Write},
     path::Path,
     process::{Command, ExitCode},
     time::Duration,
@@ -14,25 +15,28 @@ use ureq::{Agent, http::StatusCode};
 
 #[cfg(target_arch = "x86_64")]
 const ARCH: &str = "amd64";
-
 #[cfg(target_arch = "aarch64")]
 const ARCH: &str = "arm64";
+
 const URL: &str = "https://cdb-plat-use1-prod-pgtrunkio.s3.us-east-1.amazonaws.com/dependencies";
-static DEST: &str = "/var/lib/postgresql/data/lib";
+const LIB_DEST: &str = "/var/lib/postgresql/data/lib";
+const TEMBOX_DEST: &str = "/var/lib/postgresql/data/tembox";
+const TEMBOX_CFG: &str = "tembox.cfg";
 const LSB_FILE: &str = "/etc/lsb-release";
-static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+const APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
 fn main() -> Result<ExitCode, io::Error> {
     let os = get_codename()?;
-    let dest = format!("{DEST}/{os}");
-    debug!("Creating {dest}");
-    fs::create_dir_all(&dest)?;
+    debug!("Creating {LIB_DEST}");
+    fs::create_dir_all(LIB_DEST)?;
+    debug!("Creating {TEMBOX_DEST}");
+    fs::create_dir_all(TEMBOX_DEST)?;
 
     let mut code = ExitCode::SUCCESS;
     for pkg in env::args().skip(1) {
         println!("📦 Installing {pkg}");
         // XXX Make build async and wait for them all to finish.
-        match build(&pkg, &dest, &os) {
+        match build(&pkg, &os) {
             Ok(_) => println!("✅ {pkg} installed"),
             Err(e) => {
                 eprintln!("🚨 {pkg} Error: {e}");
@@ -44,7 +48,7 @@ fn main() -> Result<ExitCode, io::Error> {
     Ok(code)
 }
 
-fn build(name: &str, dest: impl AsRef<Path>, os: &str) -> Result<(), io::Error> {
+fn build(name: &str, os: &str) -> Result<(), io::Error> {
     println!("   Downloading {name}");
     let pkg = format!("tembo-{name}_{ARCH}");
     let url = format!("{URL}/{os}/{pkg}.tgz");
@@ -75,7 +79,7 @@ fn build(name: &str, dest: impl AsRef<Path>, os: &str) -> Result<(), io::Error> 
         }
     }
 
-    // Decompress gzipped data into a tar archive.
+    // Decompress tarball into a temporary directory.
     let tmp = tempdir().unwrap();
     debug!("Decompressing into {:?}", tmp);
     let body: &mut ureq::Body = res.body_mut();
@@ -84,65 +88,129 @@ fn build(name: &str, dest: impl AsRef<Path>, os: &str) -> Result<(), io::Error> 
     archive.unpack(&tmp)?;
 
     // Validate digests.
-    print!("   Validating digests...");
-    Command::new("sha512sum")
-        .args(["--check", "--strict", "--quiet", "digests"])
-        .current_dir(tmp.as_ref().join(&pkg))
-        .spawn()
-        .expect("digests validation failed")
-        .wait()
-        .unwrap();
-    println!("OK");
+    let dir = tmp.as_ref().join(&pkg);
+    check_digests(&dir)?;
 
-    // Install libs.
+    // Validate tembox.cfg.
+    check_config(&dir, name, os)?;
+
+    // Install libs and tembox.cfg.
+    copy_libs(&dir, LIB_DEST)?;
+    copy_config(name, &dir, TEMBOX_DEST)?;
+
+    Ok(())
+}
+
+fn copy_libs(dir: &Path, dest: impl AsRef<Path>) -> Result<(), io::Error> {
     println!("   Copying shared libraries...");
-    for entry in fs::read_dir(tmp.as_ref().join(&pkg).join("lib"))? {
+    let src = dir.join("lib");
+
+    for entry in fs::read_dir(src)? {
         let entry = entry?;
         let path = entry.path();
         if path.ends_with(".so") {
             debug!("skipping {:?}", path);
             continue;
         }
-        let dest = dest.as_ref().join(entry.file_name());
+        let dest_file = dest.as_ref().join(entry.file_name());
         let meta = fs::symlink_metadata(&path).unwrap();
         println!(
             "     lib/{} -> {}",
             path.file_name().unwrap().to_str().unwrap(),
-            dest.as_os_str().to_str().unwrap(),
+            dest_file.as_os_str().to_str().unwrap(),
         );
         if meta.is_symlink() {
             // Just recreate the symlink.
-            if let Err(e) = std::fs::remove_file(&dest) {
+            if let Err(e) = std::fs::remove_file(&dest_file) {
                 if e.kind() != io::ErrorKind::NotFound {
                     return Err(e);
                 }
             }
-            std::os::unix::fs::symlink(fs::read_link(path).unwrap(), &dest)?
+            std::os::unix::fs::symlink(fs::read_link(path).unwrap(), &dest_file)?
         } else {
-            fs::copy(path, &dest)?;
+            fs::copy(path, &dest_file)?;
         }
     }
     Ok(())
 }
 
+fn copy_config(pkg: &str, dir: &Path, dest: impl AsRef<Path>) -> Result<(), io::Error> {
+    let src = dir.join(TEMBOX_CFG);
+    let tembox = dest.as_ref().join(format!("{pkg}.cfg"));
+    println!(
+        "     {TEMBOX_CFG} -> {}",
+        tembox.as_os_str().to_str().unwrap(),
+    );
+    fs::copy(&src, &tembox)?;
+
+    Ok(())
+}
+
+fn check_digests(dir: &Path) -> Result<(), io::Error> {
+    print!("   Validating digests...");
+    io::stdout().flush()?;
+    Command::new("sha512sum")
+        .args(["--check", "--strict", "--quiet", "digests"])
+        .current_dir(dir)
+        .spawn()
+        .expect("digests validation failed")
+        .wait()
+        .inspect_err(|_| println!("NOT OK"))?;
+    println!("OK");
+    Ok(())
+}
+
+fn check_config(dir: &Path, pkg: &str, os: &str) -> Result<(), io::Error> {
+    print!("   Validating {TEMBOX_CFG}...");
+    io::stdout().flush()?;
+    let cfg = parse_config(dir.join(TEMBOX_CFG)).inspect_err(|_| println!("NOT OK"))?;
+    let default = "".to_string();
+
+    for (key, want) in [
+        ("tembox_package", pkg),
+        ("tembox_os", os),
+        ("tembox_arch", ARCH),
+    ] {
+        let got = cfg.get(key).unwrap_or(&default);
+        if got != want {
+            println!("NOT OK");
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Wrong {key}: Expected {:?} but got {:?}", want, got),
+            ));
+        }
+    }
+
+    println!("OK");
+    Ok(())
+}
+
 fn get_codename() -> Result<String, io::Error> {
+    let lsb = parse_config(LSB_FILE)?;
+    const OS_KEY: &str = "DISTRIB_CODENAME";
+    match lsb.get(OS_KEY) {
+        Some(v) => Ok(v.to_string()),
+        None => Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("{OS_KEY} not found in {}", LSB_FILE),
+        )),
+    }
+}
+
+fn parse_config(file: impl AsRef<Path>) -> Result<HashMap<String, String>, io::Error> {
     use std::io::BufRead;
-    debug!("Parsing {LSB_FILE}");
-    let file = File::open(LSB_FILE)?;
+    debug!("Parsing {:?}", file.as_ref());
+    let file = File::open(file)?;
     let reader = io::BufReader::new(file);
+    let mut res = HashMap::new();
     for line in reader.lines().map_while(Result::ok) {
         trace!("line {line}");
         let mut split = line.splitn(2, "=");
         if let Some(key) = split.next() {
-            if key == "DISTRIB_CODENAME" {
-                if let Some(val) = split.last() {
-                    return Ok(val.to_string());
-                }
+            if let Some(val) = split.last() {
+                res.insert(key.to_string(), val.to_string());
             }
         }
     }
-    Err(io::Error::new(
-        io::ErrorKind::Other,
-        format!("DISTRIB_CODENAME not found in {}", LSB_FILE),
-    ))
+    Ok(res)
 }

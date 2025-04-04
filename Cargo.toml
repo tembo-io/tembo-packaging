@@ -9,3 +9,11 @@ log = "0.4.27"
 tar = "0.4.44"
 tempfile = "3.19.1"
 ureq = "3.0.10"
+
+# https://github.com/johnthagen/min-sized-rust
+[profile.release]
+strip = true
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
