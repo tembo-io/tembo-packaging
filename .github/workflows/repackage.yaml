@@ -19,13 +19,13 @@ jobs:
       - "runner=small-${{ matrix.arch[1] }}"
     strategy:
       matrix:
-        os: [ ["🐿️", "noble", "24.04"], ["🪼", "jammy", "22.04"] ]
+        os: [["🐿️", "noble", "24.04"], ["🪼", "jammy", "22.04"]]
         arch: [["🦾", "arm64"], ["🤖", "amd64"]]
     container:
       image: quay.io/tembo/ubuntu:${{ matrix.os[2] }}
       credentials:
-          username: ${{ secrets.QUAY_USER_TEMBO }}
-          password: ${{ secrets.QUAY_PASSWORD_TEMBO }}
+        username: ${{ secrets.QUAY_USER_TEMBO }}
+        password: ${{ secrets.QUAY_PASSWORD_TEMBO }}
     steps:
       - uses: actions/checkout@v4
       - name: Install Dependencies

@@ -9,7 +9,7 @@ source /etc/lsb-release
 
 # usage displays a usage statement.
 usage() {
-    cat <<EOF
+	cat <<EOF
 Usage: repackage PACKAGE_NAME DEST_DIRECTORY
 EOF
 }
@@ -18,132 +18,132 @@ EOF
 # from `packages/$pkg.cfg`. Returns an error if `$pkg` is not set or
 # `packages/$pkg.cfg` does not exist.
 get_upstream() {
-    if [ -z "$pkg" ]; then
-        usage
-        exit 2
-    fi
+	if [ -z "$pkg" ]; then
+		usage
+		exit 2
+	fi
 
-    # Make sure we have the control file for this package.
-    local cfg
-    cfg="$(dirname "$(dirname "$(realpath -s "$0")")")/packages/$pkg.cfg"
-    if [ ! -f "$cfg" ]; then
-        printf "%s does not exist\n" "$pkg"
-        usage
-        exit 2
-    fi
+	# Make sure we have the control file for this package.
+	local cfg
+	cfg="$(dirname "$(dirname "$(realpath -s "$0")")")/packages/$pkg.cfg"
+	if [ ! -f "$cfg" ]; then
+		printf "%s does not exist\n" "$pkg"
+		usage
+		exit 2
+	fi
 
-    # shellcheck source=/dev/null
-    source "$cfg"
+	# shellcheck source=/dev/null
+	source "$cfg"
 
-    # Set the name of the upstream package for this OS release.
-    local var="${DISTRIB_CODENAME}_package"
-    upstream_pkg=${!var}
+	# Set the name of the upstream package for this OS release.
+	local var="${DISTRIB_CODENAME}_package"
+	upstream_pkg=${!var}
 }
 
 # download downloads a package from the upstream Apt registries.
 download() {
-    local pkg=$1
-    apt-get download "$pkg"
+	local pkg=$1
+	apt-get download "$pkg"
 }
 
 # parse_deb fetches the package version and architecture and sets the
 # `version` and `arch` variables.
 parse_deb() {
-    local pkg=$1
-    version="$(apt-cache show --no-all-versions "$pkg" | grep Version: | awk '{print $2}')"
-    arch="$(dpkg --print-architecture)"
+	local pkg=$1
+	version="$(apt-cache show --no-all-versions "$pkg" | grep Version: | awk '{print $2}')"
+	arch="$(dpkg --print-architecture)"
 }
 
 # unpack unpacks the package downloaded by download. It expects it name to
 # include the version and architecture set by parse_deb(). The resulting files
 # appear in a directory with the package name.
 unpack() {
-    local pkg=$1
-    local deb="${pkg}_${version}_${arch}.deb"
-    dpkg-deb -R "$deb" "$pkg"
+	local pkg=$1
+	local deb="${pkg}_${version}_${arch}.deb"
+	dpkg-deb -R "$deb" "$pkg"
 }
 
 # copy_files copies all the .so files and symlinks and the copyright file from
 # the package unpacked by unpack() into lib/ under a destination directory.
 copy_files() {
-    local pkg=$1
-    local dest=$2
+	local pkg=$1
+	local dest=$2
 
-    # Copy .so files and symlinks.
-    local lib="$dest/lib"
-    mkdir -p "$lib"
-    find "$pkg" -name '*.so.*' -exec cp --verbose --no-dereference {} "$lib/" \;
+	# Copy .so files and symlinks.
+	local lib="$dest/lib"
+	mkdir -p "$lib"
+	find "$pkg" -name '*.so.*' -exec cp --verbose --no-dereference {} "$lib/" \;
 
-    # Copy the `copyright` file.
-    local doc="$dest/doc"
-    mkdir -p "$doc"
-    find "$pkg" -name 'copyright' -exec cp --verbose {} "$doc/" \;
+	# Copy the `copyright` file.
+	local doc="$dest/doc"
+	mkdir -p "$doc"
+	find "$pkg" -name 'copyright' -exec cp --verbose {} "$doc/" \;
 }
 
 # add_digests creates the digests file in the destination directory.
 add_digests() {
-    local dest=$1
-    tmp_digests="$(mktemp)"
-    ( cd "$dest" && find . -type f  -exec sha512sum -b --tag {} + > "$tmp_digests" )
-    mv "$tmp_digests" "$dest/digests"
+	local dest=$1
+	tmp_digests="$(mktemp)"
+	(cd "$dest" && find . -type f -exec sha512sum -b --tag {} + >"$tmp_digests")
+	mv "$tmp_digests" "$dest/digests"
 }
 
 add_metadata() {
-    local dest=$1
-    (
-        printf "tembox_package=%s\n" "$pkg"
-        printf "tembox_package_version=%s\n" "$version"
-        printf "tembox_os=%s\n" "$DISTRIB_CODENAME"
-        printf "tembox_arch=%s\n" "$arch"
-    ) > "$dest/tembox.cfg"
+	local dest=$1
+	(
+		printf "tembox_package=%s\n" "$pkg"
+		printf "tembox_package_version=%s\n" "$version"
+		printf "tembox_os=%s\n" "$DISTRIB_CODENAME"
+		printf "tembox_arch=%s\n" "$arch"
+	) >"$dest/tembox.cfg"
 }
 
 # build creates the new .tgz file from the destination directory created by
 # copy_files() and further populated add_digests().
 build() {
-    local dest=$1
-    tar -czvf "$dest.tgz" "$dest"
+	local dest=$1
+	tar -czvf "$dest.tgz" "$dest"
 }
 
 # move moves the new debian package created by build() back to the work
 # directory where repackage was originally called.
 move() {
-    local src=$1
-    local dest=$2
-    mkdir -p "$dest"
-    mv --verbose "$src" "$dest"
+	local src=$1
+	local dest=$2
+	mkdir -p "$dest"
+	mv --verbose "$src" "$dest"
 }
 
 # main executes repackage.
 main() {
-    local pkg tembo_pkg upstream_pkg dest tmp arch version
-    pkg=${1-}
-    dest="$(realpath -s "${2-.}")/$DISTRIB_CODENAME/"
-    get_upstream
+	local pkg tembo_pkg upstream_pkg dest tmp arch version
+	pkg=${1-}
+	dest="$(realpath -s "${2-.}")/$DISTRIB_CODENAME/"
+	get_upstream
 
-    # Determine the destination package directory name.
-    parse_deb "$upstream_pkg"
-    tembo_pkg="tembo-${pkg}_${arch}"
+	# Determine the destination package directory name.
+	parse_deb "$upstream_pkg"
+	tembo_pkg="tembo-${pkg}_${arch}"
 
-    # Switch to a temporary directory.
-    tmp="$(mktemp -d)"
-    chmod +777 "$tmp"
-    pushd "$tmp" >/dev/null || exit
-    printf "Working in %s\n" "$tmp"
+	# Switch to a temporary directory.
+	tmp="$(mktemp -d)"
+	chmod +777 "$tmp"
+	pushd "$tmp" >/dev/null || exit
+	printf "Working in %s\n" "$tmp"
 
-    # Download the upstream and build the new package structure.
-    download "$upstream_pkg"
-    unpack "$upstream_pkg"
-    copy_files "$upstream_pkg" "$tembo_pkg"
-    add_metadata "$tembo_pkg"
-    add_digests "$tembo_pkg"
+	# Download the upstream and build the new package structure.
+	download "$upstream_pkg"
+	unpack "$upstream_pkg"
+	copy_files "$upstream_pkg" "$tembo_pkg"
+	add_metadata "$tembo_pkg"
+	add_digests "$tembo_pkg"
 
-    # Build the new package and move it back to the invocation directory.
-    build "$tembo_pkg"
-    move "$tembo_pkg.tgz" "$dest"
+	# Build the new package and move it back to the invocation directory.
+	build "$tembo_pkg"
+	move "$tembo_pkg.tgz" "$dest"
 
-    # Return to the invocation directory.
-    popd >/dev/null || exit
+	# Return to the invocation directory.
+	popd >/dev/null || exit
 }
 
 main "$@"

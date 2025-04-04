@@ -37,11 +37,12 @@ Cloud persistent volume. The package must have a config file,
 ❯ ./bin/repackage libjson-c
 Working in /tmp/tmp.HLNvAFmsMY
 Get:1 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libjson-c5 arm64 0.17-1build1 [36.4 kB]
-Fetched 36.4 kB in 1s (57.6 kB/s)     
+Fetched 36.4 kB in 1s (57.6 kB/s)
 'libjson-c5/usr/lib/aarch64-linux-gnu/libjson-c.so.5.3.0' -> 'tembo-libjson-c_arm64/lib/libjson-c.so.5.3.0'
 'libjson-c5/usr/lib/aarch64-linux-gnu/libjson-c.so.5' -> 'tembo-libjson-c_arm64/lib/libjson-c.so.5'
 'libjson-c5/usr/share/doc/libjson-c5/copyright' -> 'tembo-libjson-c_arm64/doc/copyright'
 tembo-libjson-c_arm64/
+tembo-libjson-c_arm64/tembox.cfg
 tembo-libjson-c_arm64/digests
 tembo-libjson-c_arm64/lib/
 tembo-libjson-c_arm64/lib/libjson-c.so.5.3.0
@@ -60,17 +61,21 @@ Once the tarball has been built for a package, use
 ``` console
 ❯ ./bin/install_package libjson-c
 tembo-libjson-c_arm64/
+tembo-libjson-c_arm64/tembox.cfg
 tembo-libjson-c_arm64/digests
 tembo-libjson-c_arm64/lib/
 tembo-libjson-c_arm64/lib/libjson-c.so.5.3.0
 tembo-libjson-c_arm64/lib/libjson-c.so.5
 tembo-libjson-c_arm64/doc/
 tembo-libjson-c_arm64/doc/copyright
+./tembox.cfg: OK
 ./lib/libjson-c.so.5.3.0: OK
 ./doc/copyright: OK
+Validating tembox.cfg...OK
 removed '/var/lib/postgresql/data/lib/libjson-c.so.5'
 'lib/libjson-c.so.5' -> '/var/lib/postgresql/data/lib/libjson-c.so.5'
 'lib/libjson-c.so.5.3.0' -> '/var/lib/postgresql/data/lib/libjson-c.so.5.3.0'
+'tembox.cfg' -> '/var/lib/postgresql/data/tembox/libjson-c.cfg'
 ```
 
 ## Tembox
@@ -92,18 +97,34 @@ Then use it on Ubuntu 22.04 "Jammy" or 24.94 "Noble" on amd64 or arm64 to
 📦 Installing libjson-c
    Downloading libjson-c
    Validating digests...OK
+   Validating tembox.cfg...OK
    Copying shared libraries...
      lib/libjson-c.so.5.3.0 -> /var/lib/postgresql/data/lib/libjson-c.so.5.3.0
      lib/libjson-c.so.5 -> /var/lib/postgresql/data/lib/libjson-c.so.5
+     tembox.cfg -> /var/lib/postgresql/data/tembox/libjson-c.cfg
 ✅ libjson-c installed
 📦 Installing libhiredis
    Downloading libhiredis
    Validating digests...OK
+   Validating tembox.cfg...OK
    Copying shared libraries...
      lib/libhiredis.so.1 -> /var/lib/postgresql/data/lib/libhiredis.so.1
      lib/libhiredis_ssl.so.1 -> /var/lib/postgresql/data/lib/libhiredis_ssl.so.1
      lib/libhiredis_ssl.so.1.1.0 -> /var/lib/postgresql/data/lib/libhiredis_ssl.so.1.1.0
      lib/libhiredis.so.1.1.0 -> /var/lib/postgresql/data/lib/libhiredis.so.1.1.0
+     tembox.cfg -> /var/lib/postgresql/data/tembox/libhiredis.cfg
+✅ libhiredis installed
 ```
 
+## Development
+
+This project uses [pre-commit] to for various quality checks. To use it
+locally:
+
+*   Install [pre-commit] and [shfmt]
+*   Run `make lint` to lint the project
+*   Run `make .git/hooks/pre-commit` to lint the project for every commit
+
   [Tembo Cloud]: https://cloud.tembo.io
+  [pre-commit]: https://pre-commit.com
+  [shfmt]: https://github.com/mvdan/sh

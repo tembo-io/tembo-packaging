@@ -5,7 +5,7 @@
 # by Apt packages.
 arch := $(shell dpkg --print-architecture)
 dest := build
-include /etc/lsb-release
+-include /etc/lsb-release
 
 all: tembox packages
 
@@ -25,6 +25,24 @@ tembox: target/release/tembox
 
 target/release/tembox: Cargo.toml src/main.rs
 	cargo build --release
+
+.PHONY: update-deps # Update dependencies to the latest versions.
+update-deps:
+	@cargo upgrade -i allow --recursive true
+	@cargo update
+	@cargo update
+
+.git/hooks/pre-commit:
+	@printf "#!/bin/sh\nmake lint\n" > $@
+	@chmod +x $@
+
+.PHONY: lint # Lint the project
+lint: .pre-commit-config.yaml
+	@pre-commit run --show-diff-on-failure --color=always --all-files
+
+.PHONY: debian-lint-depends # Install linting tools on Debian
+debian-lint-depends:
+	sudo apt-get install -y shfmt
 
 clean:
 	@rm -rf $(dest) target
