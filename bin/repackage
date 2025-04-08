@@ -59,8 +59,7 @@ parse_deb() {
 # appear in a directory with the package name.
 unpack() {
 	local pkg=$1
-	local deb="${pkg}_${version}_${arch}.deb"
-	dpkg-deb -R "$deb" "$pkg"
+	dpkg-deb -R "${pkg}_"*.deb "$pkg"
 }
 
 # copy_files copies all the .so files and symlinks and the copyright file from
