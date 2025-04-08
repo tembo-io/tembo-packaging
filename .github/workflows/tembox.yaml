@@ -9,7 +9,7 @@ permissions:
 jobs:
   release:
     name: 🦀 ${{ matrix.toolchain }} on linux/${{ matrix.arch }}
-    runs-on: ubuntu-${{ matrix.arch[1] == 'arm64' && '24.04-arm' || 'latest' }}
+    runs-on: ubuntu-${{ matrix.arch == 'arm64' && '24.04-arm' || 'latest' }}
     # https://github.com/orgs/community/discussions/57827#discussioncomment-6579237
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
     continue-on-error: ${{ matrix.toolchain == 'nightly' }}
@@ -17,10 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [amd64, arm64]
-        toolchain:
-          - stable
-          - beta
-          - nightly
+        toolchain: [stable, beta, nightly]
     steps:
       - uses: actions/checkout@v4
       - name: Setup Rust
