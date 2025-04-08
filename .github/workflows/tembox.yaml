@@ -9,12 +9,7 @@ permissions:
 jobs:
   release:
     name: 🦀 ${{ matrix.toolchain }} on linux/${{ matrix.arch }}
-    runs-on:
-      # https://runs-on.com/runners/linux/
-      - runs-on=${{ github.run_id }}-${{ matrix.toolchain }}-${{ matrix.arch }}
-      - runner=large-${{ matrix.arch }}
-      - cpu=8
-      - ram=16
+    runs-on: ubuntu-${{ matrix.arch[1] == 'arm64' && '24.04-arm' || 'latest' }}
     # https://github.com/orgs/community/discussions/57827#discussioncomment-6579237
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
     continue-on-error: ${{ matrix.toolchain == 'nightly' }}
