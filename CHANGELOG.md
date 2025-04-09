@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file. It uses the
 *   Added usage statement when no args.
 *   Added the `--version` and `--help` options.
 
+### 🐞 Bug Fixes
+
+*   Properly included the amd64 binary in the amd64 release artifact. The
+    v0.1.0 amd64 artifact incorrectly contained the arm64 binary.
+
   [v0.1.1]: https://github.com/tembo-io/tembo-packaging/compare/v0.1.0...v0.1.1
 
 ## [v0.1.0] — 2025-04-08
