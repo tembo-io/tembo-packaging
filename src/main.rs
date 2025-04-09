@@ -24,6 +24,9 @@ const TEMBOX_DEST: &str = "/var/lib/postgresql/data/tembox";
 const TEMBOX_CFG: &str = "tembox.cfg";
 const LSB_FILE: &str = "/etc/lsb-release";
 const APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const APP_NAME: &str = env!("CARGO_PKG_NAME");
+const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 
 fn main() -> Result<ExitCode, io::Error> {
     let os = get_codename()?;
@@ -33,7 +36,21 @@ fn main() -> Result<ExitCode, io::Error> {
     fs::create_dir_all(TEMBOX_DEST)?;
 
     let mut code = ExitCode::SUCCESS;
+    if env::args().len() == 1 {
+        usage();
+        return Ok(code);
+    }
+
     for pkg in env::args().skip(1) {
+        if pkg == "--version" || pkg == "-v" {
+            println!("{APP_NAME} {VERSION}");
+            continue;
+        }
+        if pkg == "--help" || pkg == "-h" {
+            usage();
+            return Ok(code);
+        }
+
         println!("📦 Installing {pkg}");
         // XXX Make build async and wait for them all to finish.
         match build(&pkg, &os) {
@@ -46,6 +63,14 @@ fn main() -> Result<ExitCode, io::Error> {
     }
 
     Ok(code)
+}
+
+fn usage() {
+    println!("{DESCRIPTION}\n");
+    println!("Usage: {APP_NAME} <package> [<package> ...]\n");
+    println!("Options:");
+    println!("  -h, --help     Print help");
+    println!("  -v, --version  Print version");
 }
 
 fn build(name: &str, os: &str) -> Result<(), io::Error> {
