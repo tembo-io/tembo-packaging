@@ -24,7 +24,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: ${{ matrix.toolchain }}
-          cache-key: ${{ matrix.arch }}
+          cache-key: r2 # Force new cache
           components: rustfmt, clippy, llvm-tools
       - name: Build Binary
         run: make tembox
@@ -56,7 +56,7 @@ jobs:
           path: "${{ env.ARCHIVE }}.*"
           name: "${{ env.ARCHIVE }}"
           overwrite: true
-        if: matrix.toolchain == 'stable' && github.ref == 'refs/tags/test-release'
+        if: matrix.toolchain == 'stable' # && github.ref == 'refs/tags/test-release'
       - name: Check the Version
         shell: bash
         run: |
