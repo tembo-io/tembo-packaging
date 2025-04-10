@@ -7,6 +7,15 @@ All notable changes to this project will be documented in this file. It uses the
   [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
     "Semantic Versioning 2.0.0"
 
+## [v0.1.2] — 2025-04-010
+
+### 📌 Dependencies
+
+*   Recompiled the binaries on Ubuntu 22 to require glibc 2.35 instead of 2.39
+    to support a couple generations of Linux.
+
+  [v0.1.2]: https://github.com/tembo-io/tembo-packaging/compare/v0.1.1...v0.1.2
+
 ## [v0.1.1] — 2025-04-09
 
 ### ⚡ Improvements

@@ -9,7 +9,8 @@ permissions:
 jobs:
   release:
     name: 🦀 ${{ matrix.toolchain }} on linux/${{ matrix.arch }}
-    runs-on: ubuntu-${{ matrix.arch == 'arm64' && '24.04-arm' || 'latest' }}
+    # Build on older generation for better libc compatibility.
+    runs-on: ubuntu-22.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
     # https://github.com/orgs/community/discussions/57827#discussioncomment-6579237
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
     continue-on-error: ${{ matrix.toolchain == 'nightly' }}
