@@ -1,16 +1,15 @@
-use flate2::read::GzDecoder;
+use archive::{UnpackedFile, unpack_files};
 use log::{debug, trace};
 use std::{
     collections::HashMap,
     env,
     fs::{self, File},
     io::{self, Write},
+    ops::Not,
     path::Path,
-    process::{Command, ExitCode},
+    process::ExitCode,
     time::Duration,
 };
-use tar::Archive;
-use tempfile::tempdir;
 use ureq::{Agent, http::StatusCode};
 
 #[cfg(target_arch = "x86_64")]
@@ -24,6 +23,9 @@ const TEMBOX_DEST: &str = "/var/lib/postgresql/data/tembox";
 const TEMBOX_CFG: &str = "tembox.cfg";
 const LSB_FILE: &str = "/etc/lsb-release";
 const APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+
+mod archive;
+mod digest;
 
 fn main() -> Result<ExitCode, io::Error> {
     let os = get_codename()?;
@@ -61,10 +63,10 @@ fn build(name: &str, os: &str) -> Result<(), io::Error> {
         .build()
         .into();
 
-    let mut res = match agent.get(url.as_str()).call() {
-        Ok(r) => r,
-        Err(e) => return Err(io::Error::new(io::ErrorKind::Other, format!("{e}"))),
-    };
+    let res = agent
+        .get(url.as_str())
+        .call()
+        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
 
     match res.status() {
         StatusCode::OK => (),
@@ -79,58 +81,70 @@ fn build(name: &str, os: &str) -> Result<(), io::Error> {
         }
     }
 
-    // Decompress tarball into a temporary directory.
-    let tmp = tempdir().unwrap();
-    debug!("Decompressing into {:?}", tmp);
-    let body: &mut ureq::Body = res.body_mut();
-    let tar = GzDecoder::new(body.as_reader());
-    let mut archive = Archive::new(tar);
-    archive.unpack(&tmp)?;
+    debug!("Decompressing in memory");
+    let body = res.into_body();
+    let (files, digests) = unpack_files(body)?;
 
     // Validate digests.
-    let dir = tmp.as_ref().join(&pkg);
-    check_digests(&dir)?;
+    check_digests(&files, &digests)?;
+
+    let tembox_cfg = {
+        let tembox_cfg = files
+            .iter()
+            .find(|file| file.path.as_ref() == Path::new(TEMBOX_CFG))
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "tembox.cfg not found"))?;
+
+        std::str::from_utf8(&tembox_cfg.contents).map_err(|err| {
+            io::Error::new(io::ErrorKind::InvalidData, format!("Invalid UTF-8: {err}"))
+        })?
+    };
 
     // Validate tembox.cfg.
-    check_config(&dir, name, os)?;
+    check_config(tembox_cfg, name, os)?;
 
     // Install libs and tembox.cfg.
-    copy_libs(&dir, LIB_DEST)?;
-    copy_config(name, &dir, TEMBOX_DEST)?;
+    copy_libs(&files, LIB_DEST)?;
+    // copy_config(name, &dir, TEMBOX_DEST)?;
 
     Ok(())
 }
 
-fn copy_libs(dir: &Path, dest: impl AsRef<Path>) -> Result<(), io::Error> {
+fn copy_libs(files: &[UnpackedFile], dest: impl AsRef<Path>) -> Result<(), io::Error> {
     println!("   Copying shared libraries...");
-    let src = dir.join("lib");
 
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.ends_with(".so") {
-            debug!("skipping {:?}", path);
+    for entry in files {
+        let entry_path = entry.path.as_ref();
+
+        if entry_path.starts_with("lib").not() || entry_path.ends_with(".so").not() {
+            debug!("skipping {:?}", entry_path);
             continue;
         }
-        let dest_file = dest.as_ref().join(entry.file_name());
-        let meta = fs::symlink_metadata(&path).unwrap();
+        let Some(file_name) = entry_path.file_name() else {
+            debug!("File without file name: {}", entry_path.display());
+            continue;
+        };
+
+        let dest_file = dest.as_ref().join(file_name);
+
         println!(
             "     lib/{} -> {}",
-            path.file_name().unwrap().to_str().unwrap(),
+            entry_path.file_name().unwrap().to_str().unwrap(),
             dest_file.as_os_str().to_str().unwrap(),
         );
-        if meta.is_symlink() {
-            // Just recreate the symlink.
+
+        if entry.entry_type.is_symlink() {
             if let Err(e) = std::fs::remove_file(&dest_file) {
                 if e.kind() != io::ErrorKind::NotFound {
                     return Err(e);
                 }
             }
-            std::os::unix::fs::symlink(fs::read_link(path).unwrap(), &dest_file)?
+
+            std::os::unix::fs::symlink(entry_path, &dest_file)?;
         } else {
-            fs::copy(path, &dest_file)?;
+            fs::write(&dest_file, &entry.contents)?;
         }
     }
+
     Ok(())
 }
 
@@ -146,25 +160,44 @@ fn copy_config(pkg: &str, dir: &Path, dest: impl AsRef<Path>) -> Result<(), io::
     Ok(())
 }
 
-fn check_digests(dir: &Path) -> Result<(), io::Error> {
+fn check_digests(
+    files: &[UnpackedFile],
+    digests: &HashMap<Box<Path>, [u8; 64]>,
+) -> Result<(), io::Error> {
     print!("   Validating digests...");
-    io::stdout().flush()?;
-    Command::new("sha512sum")
-        .args(["--check", "--strict", "--quiet", "digests"])
-        .current_dir(dir)
-        .spawn()
-        .expect("digests validation failed")
-        .wait()
-        .inspect_err(|_| println!("NOT OK"))?;
+
+    for file in files {
+        let expected_digest = digests.get(&file.path).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("No digest found for {}", file.path.display()),
+            )
+        })?;
+
+        let obtained_digest = sha512(&file.contents);
+        if &obtained_digest != expected_digest {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Digest mismatch for {}", file.path.display()),
+            ));
+        }
+    }
+
     println!("OK");
     Ok(())
 }
 
-fn check_config(dir: &Path, pkg: &str, os: &str) -> Result<(), io::Error> {
+fn sha512(contents: &[u8]) -> [u8; 64] {
+    let mut hasher = hmac_sha512::Hash::new();
+    hasher.update(contents);
+    hasher.finalize()
+}
+
+fn check_config(tembox_cfg: &str, pkg: &str, os: &str) -> Result<(), io::Error> {
     print!("   Validating {TEMBOX_CFG}...");
-    io::stdout().flush()?;
-    let cfg = parse_config(dir.join(TEMBOX_CFG)).inspect_err(|_| println!("NOT OK"))?;
-    let default = "".to_string();
+
+    let cfg = parse_config(tembox_cfg).inspect_err(|_| println!("NOT OK"))?;
+    let default = "";
 
     for (key, want) in [
         ("tembox_package", pkg),
@@ -172,7 +205,7 @@ fn check_config(dir: &Path, pkg: &str, os: &str) -> Result<(), io::Error> {
         ("tembox_arch", ARCH),
     ] {
         let got = cfg.get(key).unwrap_or(&default);
-        if got != want {
+        if *got != want {
             println!("NOT OK");
             return Err(io::Error::new(
                 io::ErrorKind::Other,
@@ -186,7 +219,8 @@ fn check_config(dir: &Path, pkg: &str, os: &str) -> Result<(), io::Error> {
 }
 
 fn get_codename() -> Result<String, io::Error> {
-    let lsb = parse_config(LSB_FILE)?;
+    let lsb_contents = fs::read_to_string(LSB_FILE)?;
+    let lsb = parse_config(&lsb_contents)?;
     const OS_KEY: &str = "DISTRIB_CODENAME";
     match lsb.get(OS_KEY) {
         Some(v) => Ok(v.to_string()),
@@ -197,20 +231,17 @@ fn get_codename() -> Result<String, io::Error> {
     }
 }
 
-fn parse_config(file: impl AsRef<Path>) -> Result<HashMap<String, String>, io::Error> {
-    use std::io::BufRead;
-    debug!("Parsing {:?}", file.as_ref());
-    let file = File::open(file)?;
-    let reader = io::BufReader::new(file);
+fn parse_config(content: &str) -> Result<HashMap<&str, &str>, io::Error> {
     let mut res = HashMap::new();
-    for line in reader.lines().map_while(Result::ok) {
+    for line in content.lines() {
         trace!("line {line}");
         let mut split = line.splitn(2, "=");
         if let Some(key) = split.next() {
             if let Some(val) = split.last() {
-                res.insert(key.to_string(), val.to_string());
+                res.insert(key, val);
             }
         }
     }
+
     Ok(res)
 }
