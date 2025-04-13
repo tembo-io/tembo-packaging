@@ -1,4 +1,4 @@
 [workspace]
 resolver = "2"
 
-members = ["./crates/tembox"]
+members = ["./crates/tembox", "crates/trunk-dependencies"]

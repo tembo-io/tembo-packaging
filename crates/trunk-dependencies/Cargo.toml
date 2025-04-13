@@ -1,0 +1,16 @@
+[package]
+name = "trunk-dependencies"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.97"
+flate2 = { version = "1.1.1", features = ["zlib"] }
+goblin = "0.9.3"
+phf = { version = "0.11.3", features = ["macros"] }
+reqwest = { version = "0.12.15", features = ["json"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_yaml = "0.9.34"
+slicedisplay = "0.2.2"
+tar = "0.4.44"
+tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread"] }
