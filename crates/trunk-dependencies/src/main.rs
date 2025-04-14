@@ -3,7 +3,7 @@ use std::{collections::HashMap, io, ops::Not, sync::LazyLock};
 use anyhow::Context;
 use dependencies::Dependencies;
 use slicedisplay::SliceDisplay;
-use tokio::task::JoinSet;
+use tokio::task::{JoinSet, spawn_blocking};
 use trunk::TrunkProject;
 
 pub static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
@@ -20,12 +20,18 @@ async fn identify_dependencies(project: TrunkProject) -> anyhow::Result<(String,
             format!("Found no download link for Trunk project {}", project.name)
         })?;
 
-    let archive = {
-        let contents = CLIENT.get(download.link).send().await?.bytes().await?;
-        unpack::decompress_in_memory(&contents)?
-    };
+    let contents = CLIENT.get(download.link).send().await?.bytes().await?;
 
-    let dependencies = Dependencies::read_from_archive(archive)?;
+    let task = spawn_blocking(move || {
+        let archive = unpack::decompress_in_memory(&contents)?;
+        drop(contents);
+
+        let dependencies = Dependencies::read_from_archive(archive)?;
+
+        Ok(dependencies) as anyhow::Result<_>
+    });
+
+    let dependencies = task.await??;
 
     Ok((project.name, dependencies))
 }
