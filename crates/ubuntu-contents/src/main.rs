@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::bail;
 use flate2::read::GzDecoder;
-use regex::{Match, bytes::Regex};
+use regex::bytes::Regex;
 
 fn generate_mapping(version: &str) -> anyhow::Result<HashMap<String, String>> {
     let mut map = HashMap::new();
@@ -17,7 +17,10 @@ fn generate_mapping(version: &str) -> anyhow::Result<HashMap<String, String>> {
     )
     .unwrap();
     let url = format!("http://archive.ubuntu.com/ubuntu/dists/{version}-updates/Contents-amd64.gz");
-    println!("Will download and unpack the contents of {url}");
+    println!(
+        "[{:?}] Will download and unpack the contents of {url}. This could take a while.",
+        thread::current().id()
+    );
 
     let body = ureq::get(url).call()?.into_body();
 
@@ -81,7 +84,7 @@ fn generate_library_mapping_json(ubuntu_version: &str) -> anyhow::Result<()> {
 
     let output_path = format!("./library_mapping_{}.json", ubuntu_version);
 
-    println!("Writing to {output_path}");
+    println!("[{:?}] Writing to {output_path}", thread::current().id());
 
     let file = File::create(output_path)?;
     let writer = BufWriter::new(file);
@@ -94,6 +97,11 @@ fn generate_library_mapping_json(ubuntu_version: &str) -> anyhow::Result<()> {
 fn main() -> anyhow::Result<()> {
     let versions = ["focal", "jammy"];
     let mut handles = Vec::with_capacity(versions.len());
+    println!(
+        "[{:?}] Spawning {} threads",
+        thread::current().id(),
+        versions.len()
+    );
 
     for version in versions {
         let handle = thread::spawn(|| generate_library_mapping_json(version));
