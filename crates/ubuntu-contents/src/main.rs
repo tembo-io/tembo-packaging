@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::File,
-    io::{BufRead, BufReader, BufWriter, Stdout},
+    io::{BufRead, BufReader, BufWriter},
     thread,
 };
 

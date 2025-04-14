@@ -56,10 +56,10 @@ static DEPENDENCY_SUPPLIERS: Map<&'static str, &'static str> = phf_map! {
     "libSFCGAL.so.1" => "libsfcgal1",
 };
 
-#[derive(Hash, Clone, Copy)]
+#[derive(Hash, Clone)]
 pub enum DependencySupplier {
     MetBy { package: &'static str },
-    Unknown,
+    Unknown { missing_package: String },
 }
 
 impl DependencySupplier {
@@ -68,24 +68,13 @@ impl DependencySupplier {
     }
 }
 
-impl DependencySupplier {
-    pub fn is_met(&self) -> bool {
-        matches!(self, Self::MetBy { package: _ })
-    }
-
-    pub fn name(&self) -> &str {
-        match self {
-            DependencySupplier::MetBy { package } => package,
-            DependencySupplier::Unknown => "<unknown>",
-        }
-    }
-}
-
 impl Display for DependencySupplier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DependencySupplier::MetBy { package } => write!(f, "{}", package),
-            DependencySupplier::Unknown => write!(f, "{}", "(unknown)"),
+            DependencySupplier::Unknown { missing_package } => {
+                write!(f, "(unknown: {missing_package})")
+            }
         }
     }
 }
@@ -149,7 +138,9 @@ impl Dependencies {
         let supplier = DEPENDENCY_SUPPLIERS
             .get(shared_object)
             .map(|package| DependencySupplier::MetBy { package })
-            .unwrap_or(DependencySupplier::Unknown);
+            .unwrap_or_else(|| DependencySupplier::Unknown {
+                missing_package: shared_object.to_string(),
+            });
 
         let owned: Arc<str> = Arc::from(shared_object);
 

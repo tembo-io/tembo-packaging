@@ -1,5 +1,3 @@
-use std::sync::LazyLock;
-
 use anyhow::Error;
 
 mod types;

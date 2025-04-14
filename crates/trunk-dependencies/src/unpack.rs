@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::{
     ffi::OsStr,
     io::{Cursor, Read},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 use tar::EntryType;
 
@@ -13,6 +13,7 @@ pub struct Archive {
 }
 
 pub struct Entry {
+    #[expect(unused)]
     pub path: PathBuf,
     pub contents: Vec<u8>,
 }
